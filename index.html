@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>WikidatAncestors</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"></script>
+  <link rel="icon" type="image/png" href="WikidatAncestors.png" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=EB+Garamond&display=swap" rel="stylesheet">
+  <style>
+  *{
+    font-family: 'EB Garamond', serif;
+  }
+  </style>
+</head>
+<body>
+<h1>WikidatAncestors</h1>
+  Build a genealogy from <a href="http://wikidata.org" target="_blank">Wikidata</a>:
+  <ul>
+  <li>click on a node to add parents and children;</li>
+  <li>clicked nodes have a wider border.</li>
+  </ul>
+  <p>
+  Wikidata element to add to the genealogy:
+  <input type="text" id="wikidata" value="Q220845">
+  <input type="button" id="send" value="add wikidata id to the genealogy">
+  Language code: <input type="text" id="lang" value="fr">
+  </p>
+  <p>
+  Examples: add 
+  <a href="" id="Q131552" class="example">Catherine de Médicis</a>, 
+  <a href="" id="Q182021" class="example">Marie de Médicis</a>,
+  <a href="" id="Q102861841" class="example">Marguerite de Ligne countess of Arenberg</a>,
+  <a href="" id="Q469059" class="example">Mary Sidney countess of Pembroke</a> or 
+  <a href="" id="Q9682" class="example">Elizabeth II</a>.
+  </p>
+  <div id="network1" style="height:90vh;width:100%"></div>
+<script>
+nodeList = []
+edgeList = []
+let lang = document.querySelector("#lang").value;
+let lastClickedNode = "";
+
+// create an array with nodes
+let nodes = new vis.DataSet(nodeList);
+let nodeDict = {};
+
+// create an array with edges
+let edges = new vis.DataSet(edgeList);
+let edgeDict = {};
+
+// create Network1
+var container = document.getElementById("network1");
+var networkData = {
+nodes: nodes,
+edges: edges,
+};
+var options = {
+  edges:{
+    arrows:"to",
+  arrowStrikethrough: true,
+  },
+  layout: {randomSeed: 2, improvedLayout:false}
+};
+var network = new vis.Network(container, networkData, options);
+
+/*
+nodes.add({"id":3,"label":"AutrJuan","color":"#DDEEFF","year":"0","city":"N"});
+edges.add({from:3, to:0, yea:"0"});
+*/
+
+  function nodeLabel(object, varName){
+    return object[varName].value.replace("http://www.wikidata.org/entity/Q","") + "_" + object[varName+"Label"].value;
+  }
+  
+  function verticalPosition(){
+    /*
+    let positions = network.getPositions()
+    let allNodes = Object.keys(positions);
+    let maxY = 0;
+    if(allNodes.length > 0){
+      allNodes.forEach(n => {
+        if(positions[n].y>maxY){
+          maxY = positions[n].y;
+        }
+      })
+    }
+    return maxY;
+    */
+    if(lastClickedNode == ""){
+      return 0;
+    } else {
+      return network.getPositions()[lastClickedNode].y
+    }
+  }
+  
+  function queryWikidata(query){
+		const fullUrl = 'https://query.wikidata.org/sparql?query=' + encodeURIComponent(query);
+		const headers = { 'Accept': 'application/sparql-results+json' };
+		return fetch( fullUrl, { headers } ).then( body => {body.json().then(function(sparqlData) {
+      sparqlData.results.bindings.forEach(e => {
+      let color = "rgb(220,220,220)";
+        
+      // Create node for targeted person
+      e.person.value = e.person.value.replace("http://www.wikidata.org/entity/","");
+      if((e.pGender != undefined) && (e.pGender.value.replace("http://www.wikidata.org/entity/Q","")=="6581072")){
+        color = "rgb(255,220,200)";
+      }
+      if((e.pGender != undefined) && (e.pGender.value.replace("http://www.wikidata.org/entity/Q","")=="6581097")){
+        color = "rgb(200,255,200)";
+      }
+      if(!(e.person.value in nodeDict)){
+        nodeDict[e.person.value] = 1;
+        nodes.add({"id":e.person.value, "label":e.personLabel.value, "color":color, "y": verticalPosition()+200});
+      }
+
+      if(type=="parents" || type=="children"){
+        // Draw parents
+        color = "rgb(200,255,200)";
+        if(e.f != undefined){
+          // Create father node
+          e.f.value = e.f.value.replace("http://www.wikidata.org/entity/","");
+          if(!(e.f.value in nodeDict)){
+            nodeDict[e.f.value] = 1;
+            nodes.add({"id":e.f.value, "label":e.fLabel.value, "color":color, "y": verticalPosition()-1000});
+          }
+          /*
+          // Direct link to father
+          if(!(e.person.value+e.f.value in edgeDict)){
+            edgeDict[e.person.value+e.f.value] = 1;
+            edges.add({"from":e.person.value, "to":e.f.value, "color":"rgb(255,220,200)"});   
+          }
+          */
+        } else {
+          e.f = {"value":"Q?"};
+        }
+        color = "rgb(255,220,200)";
+        if(e.m != undefined){
+          // Create mother node
+          e.m.value = e.m.value.replace("http://www.wikidata.org/entity/","");
+          if(!(e.m.value in nodeDict)){
+            nodeDict[e.m.value] = 1;
+            nodes.add({"id":e.m.value, "label":e.mLabel.value, "color":color, "y": verticalPosition()-1000});
+          }
+          /*
+          // Direct link to mother
+          if(!(e.person.value+e.m.value in edgeDict)){
+            edgeDict[e.person.value+e.m.value] = 1;
+            edges.add({"from":e.person.value, "to":e.m.value, "color":"rgb(255,255,0)"});   
+          }
+          */
+        } else {
+          e.m = {"value":"Q?"};
+        }
+        
+        // Create couple node
+        let coupleNode = "";
+        if(e.f.value < e.m.value){
+           coupleNode = e.f.value + "+" + e.m.value;
+        } else {
+           coupleNode = e.m.value + "+" + e.f.value;
+        }
+        if(coupleNode != "Q?+Q?"){
+          if(!(coupleNode in nodeDict)){
+            nodeDict[coupleNode] = 1;
+            nodes.add({"id":coupleNode, "label":"", "color": "black", "y": verticalPosition()-500});
+          }
+          // Add link from child
+          if(!(e.person.value+coupleNode in edgeDict)){
+            edgeDict[e.person.value+coupleNode] = 1;
+            edges.add({"from":e.person.value, "to":coupleNode, "color":"rgb(255,255,0)"});   
+          }
+          // Add link to father
+          if((e.f.value != "Q?") && (!(coupleNode+e.f.value in edgeDict))){
+            edgeDict[coupleNode+e.f.value] = 1;
+            edges.add({"from":coupleNode, "to":e.f.value, "color":"rgb(255,220,200)"});   
+          }
+          // Add link to mother
+          if((e.m.value != "Q?") && (!(coupleNode+e.m.value in edgeDict))){
+            edgeDict[coupleNode+e.m.value] = 1;
+            edges.add({"from":coupleNode, "to":e.m.value, "color":"rgb(255,220,200)"});   
+          }
+        }
+      } 
+      
+      if(type=="spouses"){
+      console.log("spouse")
+        // Create node for spouse
+        e.spouse.value = e.spouse.value.replace("http://www.wikidata.org/entity/","");
+        if((e.sGender != undefined) && (e.sGender.value.replace("http://www.wikidata.org/entity/Q","")=="6581072")){
+          color = "rgb(255,220,200)";
+        }
+        if((e.sGender != undefined) && (e.sGender.value.replace("http://www.wikidata.org/entity/Q","")=="6581097")){
+          color = "rgb(200,255,200)";
+        }
+        if(!(e.spouse.value in nodeDict)){
+          nodeDict[e.spouse.value] = 1;
+          nodes.add({"id":e.spouse.value, "label":e.spouseLabel.value, "color":color, "y": verticalPosition()});
+        }
+        
+        // Create couple node
+        let coupleNode = "";
+        if(e.person.value < e.spouse.value){
+           coupleNode = e.person.value + "+" + e.spouse.value;
+        } else {
+           coupleNode = e.spouse.value + "+" + e.person.value;
+        }
+        if(coupleNode != "Q?+Q?"){
+          if(!(coupleNode in nodeDict)){
+            nodeDict[coupleNode] = 1;
+            nodes.add({"id":coupleNode, "label":"", "color": "black", "y": verticalPosition()-500});
+          }
+        }
+        // Add link to person
+        if((e.person.value != "Q?") && (!(coupleNode+e.person.value in edgeDict))){
+          edgeDict[coupleNode+e.person.value] = 1;
+          edges.add({"from":coupleNode, "to":e.person.value, "color":"rgb(255,220,200)"});   
+        }
+        // Add link to spouse
+        if((e.spouse.value != "Q?") && (!(coupleNode+e.spouse.value in edgeDict))){
+          edgeDict[coupleNode+e.spouse.value] = 1;
+          edges.add({"from":coupleNode, "to":e.spouse.value, "color":"rgb(255,220,200)"});   
+        }
+      
+      
+      /*
+        let typeTab = type.split("|");
+        e.person.value = e.person.value.replace("http://www.wikidata.org/entity/","");
+        color = "rgb(200,255,200)";
+        if(!(e.s.value in nodeDict)){
+           //console.log(e.sGender.value + color + e.sLabel.value)
+           if(e.sGender.value.replace("http://www.wikidata.org/entity/Q","")=="6581072"){
+              color = "rgb(255,220,200)";
+           }
+           nodeDict[e.s.value] = 1;
+           nodes.add({"id":e.s.value, "label":e.sLabel.value, "color":color});
+        }
+        color = "rgb(200,255,200)";
+        if(!(e.person.value in nodeDict)){
+           //console.log(e.pGender.value + color + e.personLabel.value)
+           if(e.pGender.value.replace("http://www.wikidata.org/entity/Q","")=="6581072"){
+              color = "rgb(255,220,200)";
+           }
+           nodeDict[e.person.value] = 1;
+           nodes.add({"id":e.person.value, "label":e.personLabel.value, "color":color});
+        }
+        if(typeTab[1] == "s"){
+          if(!(e.s.value+e.person.value in edgeDict)){
+            edgeDict[e.s.value+e.person.value] = 1;
+            edges.add({"from":e.s.value, "to":e.person.value, "color":"rgb(255,255,0)"});   
+          }
+        } else {
+          if(!(e.person.value+e.s.value in edgeDict)){
+            edgeDict[e.person.value+e.s.value] = 1;
+            edges.add({"from":e.person.value, "to":e.s.value, "color":"red"});
+          }
+        }
+        
+        */
+      }
+      });
+    });
+    });
+	};
+
+function sparqlQuery(element, p){
+  let pTab = p.split("|");
+  return `SELECT ?person ?personLabel ?pGender ?s ?sLabel ?sGender WHERE {
+  VALUES ?s {${element}}
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "${lang},[AUTO_LANGUAGE],en". }
+  ${pTab[1]=="s"?"?s wdt:"+pTab[0]+" ?person.":"?person wdt:"+pTab[0]+" ?s."}
+  OPTIONAL{?s wdt:P21 ?sGender}.
+  OPTIONAL{?person wdt:P21 ?pGender}.
+}
+LIMIT 100`;
+}
+
+function sparqlFamily(element, type){
+  let query = "";
+  if(type == "parents"){
+  query = `SELECT ?person ?personLabel ?pGender ?f ?fLabel ?m ?mLabel WHERE {
+  VALUES ?person {${element}}
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "${lang},[AUTO_LANGUAGE],en". }
+  OPTIONAL{?person wdt:P25 ?m}.
+  OPTIONAL{?person wdt:P22 ?f}.
+  OPTIONAL{?person wdt:P21 ?pGender}.
+}
+LIMIT 100`;
+  }
+  if(type == "children"){
+  query = `SELECT ?person ?personLabel ?pGender ?f ?fLabel ?m ?mLabel WHERE {
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "${lang},[AUTO_LANGUAGE],en". }
+  {{VALUES ?f {${element}}} 
+  ?person wdt:P22 ?f.
+   OPTIONAL{?person wdt:P25 ?m.}}
+  UNION 
+  {{VALUES ?m {${element}}}
+    ?person wdt:P25 ?m.
+    OPTIONAL{?person wdt:P22 ?f.}}
+  OPTIONAL{?person wdt:P21 ?pGender}.
+}
+LIMIT 100`;
+
+  } 
+  if(type == "spouses"){
+  query = `SELECT ?person ?personLabel ?pGender ?spouse ?sGender ?spouseLabel WHERE {
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "${lang},[AUTO_LANGUAGE],en". }
+  {VALUES ?person {${element}}}
+  {?person wdt:P26 ?spouse.} UNION {?spouse wdt:P26 ?person.}
+  OPTIONAL{?spouse wdt:P21 ?sGender}.
+  OPTIONAL{?person wdt:P21 ?pGender}.
+}
+LIMIT 100`;
+
+}
+console.log(query);
+return query;
+
+}
+
+  let type = "";
+  let wikidataIds = []//,"Q86664578","Q5129310","Q229286","Q190058", "Q132545", "Q129857"];
+  let elementList = ""
+  wikidataIds.forEach(e => {elementList += " wd:"+e})
+  let queries = [];
+  /*
+  // Look for children
+  queries.push([elementList, "P22|s"]);
+  queries.push([elementList, "P25|s"]);
+  queries.push([elementList, "P22|o"]);
+  queries.push([elementList, "P25|o"]);
+  */
+  
+  //console.log(queries)
+  
+  function popQuery(){
+    if(queries.length > 0){
+      let query = queries.pop();
+      type = query[1];
+      queryWikidata(sparqlFamily(query[0], query[1]));
+    } else {
+      clearInterval(timer);
+    }
+  }
+  
+  let timer = setInterval(popQuery, 1000);
+  
+
+
+
+network.on("click", function(params) {
+  if(params.nodes.length > 0){
+    /*
+    queries.push(["wd:"+params.nodes[0], "P22|s"]);
+    queries.push(["wd:"+params.nodes[0], "P25|s"]);
+    queries.push(["wd:"+params.nodes[0], "P22|o"]);
+    queries.push(["wd:"+params.nodes[0], "P25|o"]);
+    */
+    lang = document.querySelector("#lang").value;
+    queries.push(["wd:"+params.nodes[0], "parents"])
+    queries.push(["wd:"+params.nodes[0], "children"])
+    queries.push(["wd:"+params.nodes[0], "spouses"])
+    console.log(nodes._data)
+    nodes.update({"id":params.nodes[0],"borderWidth":5});
+    lastClickedNode = params.nodes[0];
+    timer = setInterval(popQuery, 200);
+  }
+});
+
+document.querySelector("#send").addEventListener("click",function(e){
+  /*
+  queries.push(["wd:"+document.querySelector("#wikidata").value, "P22|s"]);
+  queries.push(["wd:"+document.querySelector("#wikidata").value, "P25|s"]);
+  queries.push(["wd:"+document.querySelector("#wikidata").value, "P22|o"]);
+  queries.push(["wd:"+document.querySelector("#wikidata").value, "P25|o"]);
+  */
+  lang = document.querySelector("#lang").value;
+  queries.push(["wd:"+document.querySelector("#wikidata").value, "parents"])
+  queries.push(["wd:"+document.querySelector("#wikidata").value, "children"])
+  queries.push(["wd:"+document.querySelector("#wikidata").value, "spouses"])
+  
+  timer = setInterval(popQuery, 200);
+});
+
+document.querySelectorAll(".example").forEach(a => {a.addEventListener("click",function(e){
+  e.preventDefault();
+  document.querySelector("#wikidata").value = e.target.id;
+  document.querySelector("#send").click();
+});
+});
+
+</script>
+</html>
+
